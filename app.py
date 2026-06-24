@@ -1,75 +1,56 @@
 import streamlit as st
-import cv2
-import numpy as np
-import os
+import google.generativeai as genai
 
-def elabora_video(video_path, output_path, y_inizio, y_fine):
-    cap = cv2.VideoCapture(video_path)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    totale_frame = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-    
-    barra_progresso = st.progress(0)
-    testo_progresso = st.empty()
-    
-    conteggio = 0
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-            
-        maschera = np.zeros(frame.shape[:2], dtype=np.uint8)
-        maschera[y_inizio:y_fine, :] = 255
-        frame_pulito = cv2.inpaint(frame, maschera, 5, cv2.INPAINT_NS)
-        out.write(frame_pulito)
-        
-        conteggio += 1
-        if conteggio % 30 == 0:
-            percentuale = conteggio / totale_frame
-            barra_progresso.progress(percentuale)
-            testo_progresso.text(f"Elaborazione: {int(percentuale * 100)}% ({conteggio}/{totale_frame} frame)")
+# Configurazione della pagina Streamlit
+st.set_page_config(page_title="AI Website Builder 🚀", layout="wide")
 
-    cap.release()
-    out.release()
-    barra_progresso.progress(1.0)
-    testo_progresso.text("Elaborazione completata!")
+st.title("🧙‍♂️ AI Website Builder")
+st.write("Scrivi cosa desideri e l'intelligenza artificiale creerà il tuo sito web in pochi secondi!")
 
-st.title("🎬 Subtitle Remover Gratuito")
-st.write("Carica un video, seleziona l'altezza dei sottotitoli e rimpiazzali con l'AI!")
+# Input dell'utente
+prompt_utente = st.text_area(
+    "Descrivi il tuo sito web nei minimi dettagli:",
+    placeholder="Es: Un sito moderno per un personal trainer con una sezione 'Chi sono', i servizi e un form di contatto color nero e oro."
+)
 
-video_caricato = st.file_uploader("Scegli un file video (MP4)", type=["mp4"])
+# Inserimento della chiave API (In produzione si usa Streamlit Secrets)
+api_key = st.text_input("Inserisci la tua Gemini API Key:", type="password")
 
-if video_caricato is not None:
-    with open("temp_input.mp4", "wb") as f:
-        f.write(video_caricato.read())
-        
-    st.success("Video caricato con successo!")
-    
-    cap_temp = cv2.VideoCapture("temp_input.mp4")
-    altezza_video = int(cap_temp.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    cap_temp.release()
-    
-    st.write(f"Altezza totale del video: {altezza_video} pixel")
-    
-    st.write("### Seleziona la fascia verticale dei sottotitoli")
-    y_inizio = st.slider("Inizio taglio (Pixel dall'alto)", 0, altezza_video, int(altezza_video * 0.85))
-    y_fine = st.slider("Fine taglio (Pixel dall'alto)", 0, altezza_video, int(altezza_video * 0.95))
-    
-    if st.button("Rimuovi Sottotitoli ✨"):
-        with st.spinner("Lavorando sul video..."):
-            elabora_video("temp_input.mp4", "temp_output.mp4", y_inizio, y_fine)
-            
-        with open("temp_output.mp4", "rb") as file_uscita:
-            st.download_button(
-                label="📥 Scarica il video pulito",
-                data=file_uscita,
-                file_name="video_senza_sottotitoli.mp4",
-                mime="video/mp4"
-            )
-            
-        if os.path.exists("temp_input.mp4"): os.remove("temp_input.mp4")
-        if os.path.exists("temp_output.mp4"): os.remove("temp_output.mp4")
+if st.button("Genera Sito Web ✨"):
+    if not prompt_utente:
+        st.error("Per favore, descrivi prima il sito che vuoi creare!")
+    elif not api_key:
+        st.error("Inserisci la tua Gemini API Key per continuare!")
+    else:
+        with st.spinner("L'oracolo dell'IA sta scrivendo il codice... 🤖"):
+            try:
+                # Configura Gemini
+                genai.configure(api_key=api_key)
+                model = genai.GenerativeModel("gemini-1.5-flash")
+                
+                # Prompt di sistema per forzare Gemini a dare SOLO codice HTML/CSS funzionante
+                prompt_di_sistema = f"""
+                Sei un esperto web designer. Genera un singolo file HTML completo, moderno, responsive (adatto anche a mobile) e con uno stile CSS integrato (usa Tailwind CSS via CDN se necessario per farlo bellissimo). 
+                Non scrivere spiegazioni, non mettere i blocchi di codice ```html. Restituisci SOLO il codice HTML puro dall'inizio alla fine.
+                Richiesta dell'utente: {prompt_utente}
+                """
+                
+                # Generazione
+                response = model.generate_content(prompt_di_sistema)
+                codice_html = response.text
+                
+                # Mostra l'anteprima del sito in un box (Iframe)
+                st.subheader("👀 Anteprima del tuo sito:")
+                st.components.v1.html(codice_html, height=500, scrolling=True)
+                
+                # Pulsante per scaricare il file index.html
+                st.success("Sito generato con successo!")
+                st.download_button(
+                    label="📥 Scarica il codice HTML",
+                    data=codice_html,
+                    file_name="index.html",
+                    mime="text/html"
+                )
+                
+            except Exception as e:
+                st.error(f"Si è verificato un errore: {e}")
